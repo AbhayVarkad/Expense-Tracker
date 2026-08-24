@@ -1,0 +1,51 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Profile {
+  id        String    @id @default(uuid())
+  name      String
+  color     String
+  /// Null when the profile has no PIN lock.
+  pinSalt   String?
+  pinHash   String?
+  createdAt DateTime  @default(now())
+
+  expenses  Expense[]
+  settings  Settings?
+
+  @@map("profiles")
+}
+
+model Expense {
+  id            String   @id @default(uuid())
+  profileId     String
+  profile       Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  amount        Decimal  @db.Decimal(12, 2)
+  category      String
+  note          String   @default("")
+  /// Calendar day in YYYY-MM-DD form, kept as a string to stay timezone-stable.
+  date          String
+  paymentMethod String
+  createdAt     DateTime @default(now())
+
+  @@index([profileId, date])
+  @@map("expenses")
+}
+
+model Settings {
+  profileId     String   @id
+  profile       Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  currency      String   @default("INR")
+  monthlyBudget Decimal? @db.Decimal(12, 2)
+
+  @@map("settings")
+}
