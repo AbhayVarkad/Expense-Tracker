@@ -6,6 +6,9 @@ import { PrismaClient } from "@/generated/prisma/client";
  * its connection pool) on `globalThis` stops that from opening a fresh
  * Postgres connection pool on every request and exhausting Neon's connection
  * limit.
+ *
+ * The client is created lazily so `next build` does not require DATABASE_URL
+ * at import time (only API requests at runtime do).
  */
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
@@ -18,8 +21,20 @@ function createPrismaClient(): PrismaClient {
   return new PrismaClient({ adapter });
 }
 
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
+function getPrismaClient(): PrismaClient {
+  if (globalForPrisma.prisma === undefined) {
+    globalForPrisma.prisma = createPrismaClient();
+  }
+  return globalForPrisma.prisma;
 }
+
+export const prisma = new Proxy({} as PrismaClient, {
+  get(_target, prop) {
+    const client = getPrismaClient();
+    const value = client[prop as keyof PrismaClient];
+    if (typeof value === "function") {
+      return (value as (...args: unknown[]) => unknown).bind(client);
+    }
+    return value;
+  },
+});

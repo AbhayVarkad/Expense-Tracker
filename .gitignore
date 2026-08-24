@@ -19,19 +19,26 @@
 
 # production
 /build
+/dist
 
 # misc
 .DS_Store
 *.pem
+Thumbs.db
+ehthumbs.db
+Desktop.ini
 
 # debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+*.log
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files (keep .env.example for setup docs)
+.env
+.env.*
+!.env.example
 
 # vercel
 .vercel
@@ -40,4 +47,21 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# prisma (generated client)
 /src/generated/prisma
+
+# turbo
+.turbo
+
+# IDE / editor
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+*~
+
+# OS / sync artifacts
+*.tmp
+~$*
