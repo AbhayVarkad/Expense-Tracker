@@ -6,6 +6,18 @@ export const MAX_NOTE_LENGTH = 140;
 export const MAX_NAME_LENGTH = 24;
 export const MIN_PIN_LENGTH = 4;
 export const MAX_PIN_LENGTH = 8;
+export const MAX_DEVICE_PROFILES = 2;
+export const MAX_PROFILES_WITH_SAME_NAME = 2;
+
+/** How many device profiles already use this name (case-insensitive). */
+export function countProfilesWithName(
+  profiles: readonly { name: string }[],
+  name: string,
+): number {
+  const normalized = name.trim().toLowerCase();
+  if (normalized === "") return 0;
+  return profiles.filter((profile) => profile.name.trim().toLowerCase() === normalized).length;
+}
 
 /** Trims, collapses whitespace, strips control characters and caps the length. */
 export function sanitizeText(value: unknown, maxLength: number): string {

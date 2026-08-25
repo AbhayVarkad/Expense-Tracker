@@ -18,11 +18,19 @@ import {
   fetchProfiles,
   fetchSettings,
   renameProfileRequest,
+  signInProfileRequest,
   unlockProfileRequest,
   updateExpenseRequest,
   updateSettingsRequest,
 } from "@/lib/api";
-import { MAX_PIN_LENGTH, MIN_PIN_LENGTH, sortExpenses } from "@/lib/expenses";
+import {
+  MAX_DEVICE_PROFILES,
+  MAX_PIN_LENGTH,
+  MIN_PIN_LENGTH,
+  MAX_PROFILES_WITH_SAME_NAME,
+  countProfilesWithName,
+  sortExpenses,
+} from "@/lib/expenses";
 import { isValidPinFormat } from "@/lib/pin";
 import {
   addKnownProfileId,
@@ -47,6 +55,7 @@ interface ProfileContextValue {
   ready: boolean;
   profiles: Profile[];
   myProfiles: Profile[];
+  canAddProfile: boolean;
   activeProfile: Profile | null;
   expenses: Expense[];
   settings: Settings;
@@ -54,6 +63,7 @@ interface ProfileContextValue {
   storageError: string | null;
   dismissStorageError: () => void;
   createProfile: (name: string, color: string, pin: string) => Promise<Profile | null>;
+  signInWithCredentials: (name: string, pin: string) => Promise<string | null>;
   unlockProfile: (profileId: string, pin: string) => Promise<boolean>;
   lockProfile: () => void;
   renameProfile: (profileId: string, name: string, color: string) => Promise<void>;
@@ -90,6 +100,8 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     () => profiles.filter((profile) => knownProfileIds.includes(profile.id)),
     [knownProfileIds, profiles],
   );
+
+  const canAddProfile = myProfiles.length < MAX_DEVICE_PROFILES;
 
   useEffect(() => {
     const storedTheme =
@@ -151,7 +163,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
 
   const createProfile = useCallback(
     async (name: string, color: string, pin: string): Promise<Profile | null> => {
-      if (pin !== "" && !isValidPinFormat(pin, MIN_PIN_LENGTH, MAX_PIN_LENGTH)) {
+      if (!isValidPinFormat(pin, MIN_PIN_LENGTH, MAX_PIN_LENGTH)) {
         return null;
       }
       try {
@@ -172,6 +184,57 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       }
     },
     [],
+  );
+
+  const signInWithCredentials = useCallback(
+    async (name: string, pin: string): Promise<string | null> => {
+      if (!isValidPinFormat(pin, MIN_PIN_LENGTH, MAX_PIN_LENGTH)) {
+        return `Enter a ${MIN_PIN_LENGTH} to ${MAX_PIN_LENGTH} digit PIN.`;
+      }
+
+      const trimmed = name.trim();
+      if (trimmed === "") {
+        return "Enter your name.";
+      }
+
+      try {
+        const profile = await signInProfileRequest(trimmed, pin);
+        const alreadyOnDevice = knownProfileIds.includes(profile.id);
+
+        if (!alreadyOnDevice) {
+          if (knownProfileIds.length >= MAX_DEVICE_PROFILES) {
+            return `This device already has ${MAX_DEVICE_PROFILES} profiles. Remove one before signing in another.`;
+          }
+          if (countProfilesWithName(myProfiles, trimmed) >= MAX_PROFILES_WITH_SAME_NAME) {
+            return `You can only have ${MAX_PROFILES_WITH_SAME_NAME} profiles named "${trimmed}" on this device.`;
+          }
+        }
+
+        const [profileExpenses, profileSettings] = await Promise.all([
+          fetchExpenses(profile.id),
+          fetchSettings(profile.id),
+        ]);
+
+        setProfiles((current) =>
+          current.some((entry) => entry.id === profile.id) ? current : [...current, profile],
+        );
+        addKnownProfileId(profile.id);
+        setKnownProfileIds((current) =>
+          current.includes(profile.id) ? current : [...current, profile.id],
+        );
+        setActiveProfile(profile);
+        setExpenses(sortExpenses(profileExpenses));
+        setSettings(profileSettings);
+        saveActiveProfileId(profile.id);
+        return null;
+      } catch (error) {
+        if (error instanceof Error && error.message !== "") {
+          return error.message;
+        }
+        return NETWORK_ERROR;
+      }
+    },
+    [knownProfileIds, myProfiles],
   );
 
   const unlockProfile = useCallback(
@@ -313,6 +376,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       ready,
       profiles,
       myProfiles,
+      canAddProfile,
       activeProfile,
       expenses,
       settings,
@@ -320,6 +384,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       storageError,
       dismissStorageError,
       createProfile,
+      signInWithCredentials,
       unlockProfile,
       lockProfile,
       renameProfile,
@@ -333,6 +398,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     [
       activeProfile,
       addExpense,
+      canAddProfile,
       createProfile,
       deleteExpense,
       deleteProfile,
@@ -344,6 +410,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       ready,
       renameProfile,
       setTheme,
+      signInWithCredentials,
       settings,
       storageError,
       theme,
