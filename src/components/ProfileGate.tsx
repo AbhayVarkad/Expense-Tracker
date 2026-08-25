@@ -8,7 +8,7 @@ import {
   Trash2,
   Wallet,
 } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useProfile } from "@/context/ProfileContext";
 import { PROFILE_COLORS } from "@/lib/categories";
 import { MAX_NAME_LENGTH, MAX_PIN_LENGTH, MIN_PIN_LENGTH } from "@/lib/expenses";
@@ -18,7 +18,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { ProfileAvatar } from "./ProfileAvatar";
 import { ThemeToggle } from "./ThemeToggle";
 
-type View = "picker" | "create" | "unlock";
+type View = "create" | "signin" | "unlock";
 
 function GateFrame({ children }: { children: React.ReactNode }) {
   return (
@@ -42,11 +42,17 @@ function GateFrame({ children }: { children: React.ReactNode }) {
 }
 
 export function ProfileGate() {
-  const { profiles, createProfile, unlockProfile, deleteProfile } = useProfile();
-  const [view, setView] = useState<View>(profiles.length === 0 ? "create" : "picker");
+  const { myProfiles, createProfile, unlockProfile, deleteProfile } = useProfile();
+  const [view, setView] = useState<View>(() => (myProfiles.length === 0 ? "create" : "signin"));
   const [selected, setSelected] = useState<Profile | null>(null);
   const [managing, setManaging] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Profile | null>(null);
+
+  useEffect(() => {
+    if (myProfiles.length === 0) {
+      setView("create");
+    }
+  }, [myProfiles.length]);
 
   const [name, setName] = useState("");
   const [color, setColor] = useState(PROFILE_COLORS[0]);
@@ -60,7 +66,7 @@ export function ProfileGate() {
 
   const resetCreateForm = () => {
     setName("");
-    setColor(PROFILE_COLORS[profiles.length % PROFILE_COLORS.length]);
+    setColor(PROFILE_COLORS[myProfiles.length % PROFILE_COLORS.length]);
     setNewPin("");
     setConfirmPin("");
     setCreateError(null);
@@ -70,7 +76,7 @@ export function ProfileGate() {
     event.preventDefault();
     const trimmed = name.trim();
     if (trimmed === "") {
-      setCreateError("Give this profile a name.");
+      setCreateError("Enter your name to continue.");
       return;
     }
     if (newPin !== "") {
@@ -88,7 +94,7 @@ export function ProfileGate() {
     const created = await createProfile(trimmed, color, newPin);
     setBusy(false);
     if (created === null) {
-      setCreateError("Could not create the profile. Try a different name.");
+      setCreateError("Could not create your account. Try a different name.");
       return;
     }
     resetCreateForm();
@@ -123,10 +129,12 @@ export function ProfileGate() {
         <form onSubmit={handleCreate} className="space-y-5">
           <div>
             <h2 className="text-lg font-semibold text-foreground">
-              {profiles.length === 0 ? "Create your profile" : "Add a profile"}
+              {myProfiles.length === 0 ? "Create your account" : "Add profile"}
             </h2>
             <p className="mt-1 text-sm text-muted">
-              Each profile keeps its own expenses in this browser.
+              {myProfiles.length === 0
+                ? "Set up your profile to start tracking expenses."
+                : "Create another profile for someone else on this device."}
             </p>
           </div>
 
@@ -141,7 +149,7 @@ export function ProfileGate() {
               onChange={(event) => setName(event.target.value)}
               maxLength={MAX_NAME_LENGTH}
               placeholder="e.g. Varun"
-              autoComplete="off"
+              autoComplete="name"
             />
           </div>
 
@@ -181,23 +189,29 @@ export function ProfileGate() {
 
           {createError !== null && <p className="text-sm text-danger">{createError}</p>}
 
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            {profiles.length > 0 && (
+          <div className="space-y-3">
+            <button type="submit" className="btn-primary w-full" disabled={busy}>
+              {busy
+                ? "Creating..."
+                : myProfiles.length === 0
+                  ? "Create account"
+                  : "Add profile"}
+            </button>
+
+            {myProfiles.length > 0 && (
               <button
                 type="button"
-                className="btn-soft w-full sm:w-auto"
+                className="btn-ghost w-full text-sm"
                 onClick={() => {
                   resetCreateForm();
-                  setView("picker");
+                  setManaging(false);
+                  setView("signin");
                 }}
               >
                 <ArrowLeft className="size-4" />
-                Back
+                Back to your profiles
               </button>
             )}
-            <button type="submit" className="btn-primary w-full sm:w-auto" disabled={busy}>
-              {busy ? "Creating..." : "Create profile"}
-            </button>
           </div>
         </form>
       </GateFrame>
@@ -246,18 +260,18 @@ export function ProfileGate() {
                 setSelected(null);
                 setPin("");
                 setPinError(null);
-                setView("picker");
+                setView("signin");
               }}
             >
               <ArrowLeft className="size-4" />
-              All profiles
+              Back
             </button>
             <button
               type="submit"
               className="btn-primary w-full sm:w-auto"
               disabled={busy || pin.length < MIN_PIN_LENGTH}
             >
-              Unlock
+              Sign in
             </button>
           </div>
         </form>
@@ -269,8 +283,11 @@ export function ProfileGate() {
     <GateFrame>
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-foreground">Who is spending?</h2>
-          {profiles.length > 0 && (
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">Sign in</h2>
+            <p className="mt-1 text-sm text-muted">Choose one of your profiles on this device.</p>
+          </div>
+          {myProfiles.length > 0 && (
             <button
               type="button"
               className="text-xs font-medium text-primary hover:underline"
@@ -281,50 +298,66 @@ export function ProfileGate() {
           )}
         </div>
 
-        <ul className="space-y-2">
-          {profiles.map((profile, index) => (
-            <li
-              key={profile.id}
-              className="stagger-item flex items-center gap-2"
-              style={{ animationDelay: `${index * 50}ms` }}
+        {myProfiles.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-line bg-surface-muted px-4 py-6 text-center">
+            <p className="text-sm text-muted">No profiles on this device yet.</p>
+            <button
+              type="button"
+              className="btn-primary mt-4"
+              onClick={() => {
+                resetCreateForm();
+                setView("create");
+              }}
             >
-              <button
-                type="button"
-                onClick={() => void openProfile(profile)}
-                className="group flex flex-1 items-center gap-3 rounded-xl border border-line bg-surface-muted px-3 py-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-primary hover:bg-primary-soft hover:shadow-md active:translate-y-0 active:scale-[0.99]"
+              Create account
+            </button>
+          </div>
+        ) : (
+          <ul className="space-y-2">
+            {myProfiles.map((profile, index) => (
+              <li
+                key={profile.id}
+                className="stagger-item flex items-center gap-2"
+                style={{ animationDelay: `${index * 50}ms` }}
               >
-                <span className="transition-transform duration-300 group-hover:scale-110">
-                  <ProfileAvatar name={profile.name} color={profile.color} />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium text-foreground">
-                    {profile.name}
-                  </span>
-                  <span className="flex items-center gap-1 text-xs text-muted">
-                    {profile.hasPin ? (
-                      <>
-                        <Lock className="size-3" /> PIN protected
-                      </>
-                    ) : (
-                      "No PIN"
-                    )}
-                  </span>
-                </span>
-                <ChevronRight className="size-4 shrink-0 text-muted transition-transform duration-200 group-hover:translate-x-1 group-hover:text-primary" />
-              </button>
-              {managing && (
                 <button
                   type="button"
-                  aria-label={`Delete ${profile.name}`}
-                  className="btn-ghost size-11 shrink-0 rounded-xl p-0 text-danger hover:scale-105 hover:bg-danger/10 hover:text-danger"
-                  onClick={() => setPendingDelete(profile)}
+                  onClick={() => void openProfile(profile)}
+                  className="group flex flex-1 items-center gap-3 rounded-xl border border-line bg-surface-muted px-3 py-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-primary hover:bg-primary-soft hover:shadow-md active:translate-y-0 active:scale-[0.99]"
                 >
-                  <Trash2 className="size-4" />
+                  <span className="transition-transform duration-300 group-hover:scale-110">
+                    <ProfileAvatar name={profile.name} color={profile.color} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-foreground">
+                      {profile.name}
+                    </span>
+                    <span className="flex items-center gap-1 text-xs text-muted">
+                      {profile.hasPin ? (
+                        <>
+                          <Lock className="size-3" /> PIN protected
+                        </>
+                      ) : (
+                        "No PIN"
+                      )}
+                    </span>
+                  </span>
+                  <ChevronRight className="size-4 shrink-0 text-muted transition-transform duration-200 group-hover:translate-x-1 group-hover:text-primary" />
                 </button>
-              )}
-            </li>
-          ))}
-        </ul>
+                {managing && (
+                  <button
+                    type="button"
+                    aria-label={`Delete ${profile.name}`}
+                    className="btn-ghost size-11 shrink-0 rounded-xl p-0 text-danger hover:scale-105 hover:bg-danger/10 hover:text-danger"
+                    onClick={() => setPendingDelete(profile)}
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
 
         <button
           type="button"
@@ -338,17 +371,12 @@ export function ProfileGate() {
           <Plus className="size-4" />
           Add profile
         </button>
-
-        <p className="text-[11px] leading-relaxed text-muted">
-          Expenses are saved to the database and follow each profile across devices. PINs are just
-          a convenience lock between people sharing this app.
-        </p>
       </div>
 
       <ConfirmDialog
         open={pendingDelete !== null}
         title={`Delete ${pendingDelete?.name ?? "profile"}?`}
-        message="This permanently removes the profile and every expense saved under it in this browser. This cannot be undone."
+        message="This permanently removes the profile and every expense saved under it. This cannot be undone."
         confirmLabel="Delete profile"
         onCancel={() => setPendingDelete(null)}
         onConfirm={() => {

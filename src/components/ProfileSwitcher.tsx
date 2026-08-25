@@ -10,7 +10,7 @@ interface ProfileSwitcherProps {
 }
 
 export function ProfileSwitcher({ onOpenSettings }: ProfileSwitcherProps) {
-  const { profiles, activeProfile, unlockProfile, lockProfile } = useProfile();
+  const { myProfiles, activeProfile, unlockProfile, lockProfile } = useProfile();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -34,7 +34,7 @@ export function ProfileSwitcher({ onOpenSettings }: ProfileSwitcherProps) {
 
   if (activeProfile === null) return null;
 
-  const others = profiles.filter((profile) => profile.id !== activeProfile.id);
+  const others = myProfiles.filter((profile) => profile.id !== activeProfile.id);
 
   const switchTo = async (profileId: string, hasPin: boolean) => {
     setOpen(false);
