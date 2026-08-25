@@ -10,7 +10,7 @@ interface ProfileSwitcherProps {
 }
 
 export function ProfileSwitcher({ onOpenSettings }: ProfileSwitcherProps) {
-  const { myProfiles, activeProfile, unlockProfile, lockProfile } = useProfile();
+  const { myProfiles, canAddProfile, activeProfile, unlockProfile, lockProfile } = useProfile();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -128,18 +128,20 @@ export function ProfileSwitcher({ onOpenSettings }: ProfileSwitcherProps) {
             <LockKeyhole className="size-4 text-muted" />
             Lock profile
           </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              lockProfile();
-            }}
-            className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm text-foreground transition-colors hover:bg-surface-muted"
-          >
-            <Plus className="size-4 text-muted" />
-            Add another profile
-          </button>
+          {canAddProfile && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                lockProfile();
+              }}
+              className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm text-foreground transition-colors hover:bg-surface-muted"
+            >
+              <Plus className="size-4 text-muted" />
+              Add another profile
+            </button>
+          )}
         </div>
       )}
     </div>

@@ -2,7 +2,6 @@
 
 import {
   ArrowLeft,
-  ChevronRight,
   Lock,
   Plus,
   Trash2,
@@ -11,14 +10,21 @@ import {
 import { useEffect, useState, type FormEvent } from "react";
 import { useProfile } from "@/context/ProfileContext";
 import { PROFILE_COLORS } from "@/lib/categories";
-import { MAX_NAME_LENGTH, MAX_PIN_LENGTH, MIN_PIN_LENGTH } from "@/lib/expenses";
+import {
+  MAX_DEVICE_PROFILES,
+  MAX_NAME_LENGTH,
+  MAX_PIN_LENGTH,
+  MAX_PROFILES_WITH_SAME_NAME,
+  MIN_PIN_LENGTH,
+  countProfilesWithName,
+} from "@/lib/expenses";
 import { isValidPinFormat } from "@/lib/pin";
 import type { Profile } from "@/lib/types";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ProfileAvatar } from "./ProfileAvatar";
 import { ThemeToggle } from "./ThemeToggle";
 
-type View = "create" | "signin" | "unlock";
+type View = "create" | "signin" | "unlock" | "remote";
 
 function GateFrame({ children }: { children: React.ReactNode }) {
   return (
@@ -42,23 +48,23 @@ function GateFrame({ children }: { children: React.ReactNode }) {
 }
 
 export function ProfileGate() {
-  const { myProfiles, createProfile, unlockProfile, deleteProfile } = useProfile();
+  const { myProfiles, canAddProfile, createProfile, signInWithCredentials, unlockProfile, deleteProfile } =
+    useProfile();
   const [view, setView] = useState<View>(() => (myProfiles.length === 0 ? "create" : "signin"));
   const [selected, setSelected] = useState<Profile | null>(null);
   const [managing, setManaging] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Profile | null>(null);
 
   useEffect(() => {
-    if (myProfiles.length === 0) {
+    if (myProfiles.length === 0 && view === "signin") {
       setView("create");
     }
-  }, [myProfiles.length]);
+  }, [myProfiles.length, view]);
 
   const [name, setName] = useState("");
-  const [color, setColor] = useState(PROFILE_COLORS[0]);
   const [newPin, setNewPin] = useState("");
-  const [confirmPin, setConfirmPin] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
+  const [remoteError, setRemoteError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const [pin, setPin] = useState("");
@@ -66,10 +72,31 @@ export function ProfileGate() {
 
   const resetCreateForm = () => {
     setName("");
-    setColor(PROFILE_COLORS[myProfiles.length % PROFILE_COLORS.length]);
     setNewPin("");
-    setConfirmPin("");
     setCreateError(null);
+    setRemoteError(null);
+  };
+
+  const handleRemoteSignIn = async (event: FormEvent) => {
+    event.preventDefault();
+    const trimmed = name.trim();
+    if (trimmed === "") {
+      setRemoteError("Enter your name.");
+      return;
+    }
+    if (!isValidPinFormat(newPin, MIN_PIN_LENGTH, MAX_PIN_LENGTH)) {
+      setRemoteError(`Enter a ${MIN_PIN_LENGTH} to ${MAX_PIN_LENGTH} digit PIN.`);
+      return;
+    }
+
+    setBusy(true);
+    const error = await signInWithCredentials(trimmed, newPin);
+    setBusy(false);
+    if (error !== null) {
+      setRemoteError(error);
+      return;
+    }
+    resetCreateForm();
   };
 
   const handleCreate = async (event: FormEvent) => {
@@ -79,22 +106,29 @@ export function ProfileGate() {
       setCreateError("Enter your name to continue.");
       return;
     }
-    if (newPin !== "") {
-      if (!isValidPinFormat(newPin, MIN_PIN_LENGTH, MAX_PIN_LENGTH)) {
-        setCreateError(`Use ${MIN_PIN_LENGTH} to ${MAX_PIN_LENGTH} digits, or leave the PIN empty.`);
-        return;
-      }
-      if (newPin !== confirmPin) {
-        setCreateError("The two PINs do not match.");
-        return;
-      }
+    if (!canAddProfile) {
+      setCreateError(
+        `This device already has ${MAX_DEVICE_PROFILES} profiles. Remove one before adding another.`,
+      );
+      return;
+    }
+    if (countProfilesWithName(myProfiles, trimmed) >= MAX_PROFILES_WITH_SAME_NAME) {
+      setCreateError(
+        `You can only have ${MAX_PROFILES_WITH_SAME_NAME} profiles named "${trimmed}" on this device.`,
+      );
+      return;
+    }
+    if (!isValidPinFormat(newPin, MIN_PIN_LENGTH, MAX_PIN_LENGTH)) {
+      setCreateError(`Enter a ${MIN_PIN_LENGTH} to ${MAX_PIN_LENGTH} digit PIN.`);
+      return;
     }
 
     setBusy(true);
+    const color = PROFILE_COLORS[myProfiles.length % PROFILE_COLORS.length];
     const created = await createProfile(trimmed, color, newPin);
     setBusy(false);
     if (created === null) {
-      setCreateError("Could not create your account. Try a different name.");
+      setCreateError("Could not create your account. Try again.");
       return;
     }
     resetCreateForm();
@@ -133,8 +167,8 @@ export function ProfileGate() {
             </h2>
             <p className="mt-1 text-sm text-muted">
               {myProfiles.length === 0
-                ? "Set up your profile to start tracking expenses."
-                : "Create another profile for someone else on this device."}
+                ? "Enter your name and PIN to get started."
+                : `Up to ${MAX_DEVICE_PROFILES} profiles per device.`}
             </p>
           </div>
 
@@ -148,49 +182,32 @@ export function ProfileGate() {
               value={name}
               onChange={(event) => setName(event.target.value)}
               maxLength={MAX_NAME_LENGTH}
-              placeholder="e.g. Varun"
+              placeholder="Your name"
               autoComplete="name"
             />
           </div>
 
-          <div className="space-y-3 rounded-xl border border-line bg-surface-muted p-3.5">
-            <div className="flex items-center gap-2">
-              <Lock className="size-3.5 text-muted" />
-              <span className="text-xs font-medium text-foreground">PIN (optional)</span>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <input
-                className="field bg-surface"
-                type="password"
-                inputMode="numeric"
-                autoComplete="new-password"
-                placeholder={`${MIN_PIN_LENGTH}-${MAX_PIN_LENGTH} digits`}
-                value={newPin}
-                maxLength={MAX_PIN_LENGTH}
-                onChange={(event) => setNewPin(event.target.value.replace(/\D/g, ""))}
-              />
-              <input
-                className="field bg-surface"
-                type="password"
-                inputMode="numeric"
-                autoComplete="new-password"
-                placeholder="Repeat PIN"
-                value={confirmPin}
-                maxLength={MAX_PIN_LENGTH}
-                disabled={newPin === ""}
-                onChange={(event) => setConfirmPin(event.target.value.replace(/\D/g, ""))}
-              />
-            </div>
-            <p className="text-[11px] leading-relaxed text-muted">
-              A PIN keeps other people from opening your profile by accident. It is a
-              convenience lock, not real security.
-            </p>
+          <div className="space-y-1.5">
+            <label htmlFor="profile-pin" className="text-xs font-medium text-muted">
+              PIN
+            </label>
+            <input
+              id="profile-pin"
+              className="field"
+              type="password"
+              inputMode="numeric"
+              autoComplete="new-password"
+              placeholder={`${MIN_PIN_LENGTH}-${MAX_PIN_LENGTH} digits`}
+              value={newPin}
+              maxLength={MAX_PIN_LENGTH}
+              onChange={(event) => setNewPin(event.target.value.replace(/\D/g, ""))}
+            />
           </div>
 
           {createError !== null && <p className="text-sm text-danger">{createError}</p>}
 
           <div className="space-y-3">
-            <button type="submit" className="btn-primary w-full" disabled={busy}>
+            <button type="submit" className="btn-primary w-full" disabled={busy || !canAddProfile}>
               {busy
                 ? "Creating..."
                 : myProfiles.length === 0
@@ -212,6 +229,86 @@ export function ProfileGate() {
                 Back to your profiles
               </button>
             )}
+
+            {myProfiles.length === 0 && (
+              <button
+                type="button"
+                className="btn-ghost w-full text-sm"
+                onClick={() => {
+                  resetCreateForm();
+                  setView("remote");
+                }}
+              >
+                Already have an account? Sign in
+              </button>
+            )}
+          </div>
+        </form>
+      </GateFrame>
+    );
+  }
+
+  if (view === "remote") {
+    return (
+      <GateFrame>
+        <form onSubmit={handleRemoteSignIn} className="space-y-5">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">Sign in on this device</h2>
+            <p className="mt-1 text-sm text-muted">
+              Use the same name and PIN from your other device. Your expenses will load from the
+              cloud.
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="remote-name" className="text-xs font-medium text-muted">
+              Name
+            </label>
+            <input
+              id="remote-name"
+              className="field"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              maxLength={MAX_NAME_LENGTH}
+              placeholder="Your name"
+              autoComplete="name"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="remote-pin" className="text-xs font-medium text-muted">
+              PIN
+            </label>
+            <input
+              id="remote-pin"
+              className="field"
+              type="password"
+              inputMode="numeric"
+              autoComplete="current-password"
+              placeholder={`${MIN_PIN_LENGTH}-${MAX_PIN_LENGTH} digits`}
+              value={newPin}
+              maxLength={MAX_PIN_LENGTH}
+              onChange={(event) => setNewPin(event.target.value.replace(/\D/g, ""))}
+            />
+          </div>
+
+          {remoteError !== null && <p className="text-sm text-danger">{remoteError}</p>}
+
+          <div className="space-y-3">
+            <button type="submit" className="btn-primary w-full" disabled={busy}>
+              {busy ? "Signing in..." : "Sign in"}
+            </button>
+            <button
+              type="button"
+              className="btn-ghost w-full text-sm"
+              onClick={() => {
+                resetCreateForm();
+                setView(myProfiles.length === 0 ? "create" : "signin");
+              }}
+            >
+              <ArrowLeft className="size-4" />
+              {myProfiles.length === 0 ? "Create a new account" : "Back to your profiles"}
+            </button>
           </div>
         </form>
       </GateFrame>
@@ -285,7 +382,9 @@ export function ProfileGate() {
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-foreground">Sign in</h2>
-            <p className="mt-1 text-sm text-muted">Choose one of your profiles on this device.</p>
+            <p className="mt-1 text-sm text-muted">
+              {myProfiles.length} of {MAX_DEVICE_PROFILES} profiles on this device
+            </p>
           </div>
           {myProfiles.length > 0 && (
             <button
@@ -323,26 +422,20 @@ export function ProfileGate() {
                 <button
                   type="button"
                   onClick={() => void openProfile(profile)}
-                  className="group flex flex-1 items-center gap-3 rounded-xl border border-line bg-surface-muted px-3 py-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-primary hover:bg-primary-soft hover:shadow-md active:translate-y-0 active:scale-[0.99]"
+                  className="group flex flex-1 items-center justify-between gap-3 rounded-xl border border-line bg-surface-muted px-4 py-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-primary hover:bg-primary-soft hover:shadow-md active:translate-y-0 active:scale-[0.99]"
                 >
-                  <span className="transition-transform duration-300 group-hover:scale-110">
-                    <ProfileAvatar name={profile.name} color={profile.color} />
-                  </span>
-                  <span className="min-w-0 flex-1">
+                  <span className="min-w-0">
                     <span className="block truncate text-sm font-medium text-foreground">
                       {profile.name}
                     </span>
-                    <span className="flex items-center gap-1 text-xs text-muted">
-                      {profile.hasPin ? (
-                        <>
-                          <Lock className="size-3" /> PIN protected
-                        </>
-                      ) : (
-                        "No PIN"
-                      )}
+                    <span className="mt-0.5 flex items-center gap-1.5 text-xs text-muted">
+                      <Lock className="size-3" />
+                      {profile.hasPin ? "••••" : "No PIN set"}
                     </span>
                   </span>
-                  <ChevronRight className="size-4 shrink-0 text-muted transition-transform duration-200 group-hover:translate-x-1 group-hover:text-primary" />
+                  <span className="text-xs font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100">
+                    Sign in
+                  </span>
                 </button>
                 {managing && (
                   <button
@@ -359,18 +452,37 @@ export function ProfileGate() {
           </ul>
         )}
 
-        <button
-          type="button"
-          className="btn-soft w-full border-dashed"
-          onClick={() => {
-            resetCreateForm();
-            setManaging(false);
-            setView("create");
-          }}
-        >
-          <Plus className="size-4" />
-          Add profile
-        </button>
+        {canAddProfile ? (
+          <>
+            <button
+              type="button"
+              className="btn-soft w-full border-dashed"
+              onClick={() => {
+                resetCreateForm();
+                setManaging(false);
+                setView("create");
+              }}
+            >
+              <Plus className="size-4" />
+              Add profile
+            </button>
+            <button
+              type="button"
+              className="btn-ghost w-full text-sm"
+              onClick={() => {
+                resetCreateForm();
+                setManaging(false);
+                setView("remote");
+              }}
+            >
+              Sign in from another device
+            </button>
+          </>
+        ) : (
+          <p className="rounded-xl border border-line bg-surface-muted px-4 py-3 text-center text-xs text-muted">
+            This device already has {MAX_DEVICE_PROFILES} profiles. Remove one to add another.
+          </p>
+        )}
       </div>
 
       <ConfirmDialog

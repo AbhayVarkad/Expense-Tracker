@@ -28,18 +28,14 @@ export async function POST(request: NextRequest) {
       : PROFILE_COLORS[0];
 
   const pin = typeof rawPin === "string" ? rawPin : "";
-  let pinSalt: string | null = null;
-  let pinHash: string | null = null;
-  if (pin !== "") {
-    if (!isValidPinFormat(pin, MIN_PIN_LENGTH, MAX_PIN_LENGTH)) {
-      return NextResponse.json(
-        { error: `Use ${MIN_PIN_LENGTH} to ${MAX_PIN_LENGTH} digits, or leave the PIN empty.` },
-        { status: 400 },
-      );
-    }
-    pinSalt = generateSalt();
-    pinHash = await hashPin(pin, pinSalt);
+  if (!isValidPinFormat(pin, MIN_PIN_LENGTH, MAX_PIN_LENGTH)) {
+    return NextResponse.json(
+      { error: `Use ${MIN_PIN_LENGTH} to ${MAX_PIN_LENGTH} digits for the PIN.` },
+      { status: 400 },
+    );
   }
+  const pinSalt = generateSalt();
+  const pinHash = await hashPin(pin, pinSalt);
 
   const profile = await prisma.profile.create({
     data: { name, color, pinSalt, pinHash, settings: { create: {} } },

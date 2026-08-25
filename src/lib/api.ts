@@ -47,6 +47,13 @@ export async function unlockProfileRequest(profileId: string, pin: string): Prom
   return response.ok;
 }
 
+export function signInProfileRequest(name: string, pin: string): Promise<Profile> {
+  return request<Profile>("/api/profiles/sign-in", {
+    method: "POST",
+    body: JSON.stringify({ name, pin }),
+  });
+}
+
 export function fetchExpenses(profileId: string): Promise<Expense[]> {
   return request<Expense[]>(`/api/profiles/${profileId}/expenses`);
 }
