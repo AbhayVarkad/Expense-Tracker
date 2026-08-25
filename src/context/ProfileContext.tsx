@@ -25,8 +25,11 @@ import {
 import { MAX_PIN_LENGTH, MIN_PIN_LENGTH, sortExpenses } from "@/lib/expenses";
 import { isValidPinFormat } from "@/lib/pin";
 import {
+  addKnownProfileId,
   loadActiveProfileId,
+  loadKnownProfileIds,
   loadTheme,
+  removeKnownProfileId,
   saveActiveProfileId,
   saveTheme,
 } from "@/lib/storage";
@@ -43,6 +46,7 @@ export interface ExpenseInput {
 interface ProfileContextValue {
   ready: boolean;
   profiles: Profile[];
+  myProfiles: Profile[];
   activeProfile: Profile | null;
   expenses: Expense[];
   settings: Settings;
@@ -80,6 +84,12 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [theme, setThemeState] = useState<Theme>("light");
   const [storageError, setStorageError] = useState<string | null>(null);
+  const [knownProfileIds, setKnownProfileIds] = useState<string[]>([]);
+
+  const myProfiles = useMemo(
+    () => profiles.filter((profile) => knownProfileIds.includes(profile.id)),
+    [knownProfileIds, profiles],
+  );
 
   useEffect(() => {
     const storedTheme =
@@ -99,8 +109,18 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         setProfiles(storedProfiles);
 
+        const knownIds = loadKnownProfileIds();
         const lastId = loadActiveProfileId();
-        const candidate = storedProfiles.find((profile) => profile.id === lastId) ?? null;
+        const mergedKnownIds =
+          lastId !== null && !knownIds.includes(lastId) ? [...knownIds, lastId] : knownIds;
+        setKnownProfileIds(mergedKnownIds);
+
+        const candidate =
+          lastId === null
+            ? null
+            : (storedProfiles.find(
+                (profile) => profile.id === lastId && mergedKnownIds.includes(profile.id),
+              ) ?? null);
         if (candidate !== null && !candidate.hasPin) {
           const [profileExpenses, profileSettings] = await Promise.all([
             fetchExpenses(candidate.id),
@@ -137,6 +157,10 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       try {
         const profile = await createProfileRequest(name, color, pin);
         setProfiles((current) => [...current, profile]);
+        addKnownProfileId(profile.id);
+        setKnownProfileIds((current) =>
+          current.includes(profile.id) ? current : [...current, profile.id],
+        );
         setActiveProfile(profile);
         setExpenses([]);
         setSettings(DEFAULT_SETTINGS);
@@ -164,6 +188,10 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         setActiveProfile(profile);
         setExpenses(sortExpenses(profileExpenses));
         setSettings(profileSettings);
+        addKnownProfileId(profileId);
+        setKnownProfileIds((current) =>
+          current.includes(profileId) ? current : [...current, profileId],
+        );
         saveActiveProfileId(profileId);
         return true;
       } catch {
@@ -201,6 +229,8 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     async (profileId: string) => {
       try {
         await deleteProfileRequest(profileId);
+        removeKnownProfileId(profileId);
+        setKnownProfileIds((current) => current.filter((id) => id !== profileId));
         setProfiles((current) => current.filter((profile) => profile.id !== profileId));
         setActiveProfile((current) => {
           if (current === null || current.id !== profileId) return current;
@@ -282,6 +312,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     () => ({
       ready,
       profiles,
+      myProfiles,
       activeProfile,
       expenses,
       settings,
@@ -308,6 +339,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       dismissStorageError,
       expenses,
       lockProfile,
+      myProfiles,
       profiles,
       ready,
       renameProfile,

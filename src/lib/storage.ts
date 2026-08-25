@@ -9,6 +9,7 @@ const PREFIX = "et:v1";
  */
 export const storageKeys = {
   activeProfile: `${PREFIX}:activeProfile`,
+  knownProfiles: `${PREFIX}:knownProfiles`,
   theme: `${PREFIX}:theme`,
 };
 
@@ -41,6 +42,48 @@ export function saveActiveProfileId(profileId: string | null): void {
     }
   } catch {
     // Losing the "last used profile" hint is harmless.
+  }
+}
+
+/** Profile ids this browser has created or signed into — not every row in the database. */
+export function loadKnownProfileIds(): string[] {
+  if (!isBrowser()) return [];
+  try {
+    const raw = window.localStorage.getItem(storageKeys.knownProfiles);
+    if (raw === null) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((entry): entry is string => typeof entry === "string")
+      .map(safeId)
+      .filter((entry) => entry !== "");
+  } catch {
+    return [];
+  }
+}
+
+export function addKnownProfileId(profileId: string): void {
+  if (!isBrowser()) return;
+  const id = safeId(profileId);
+  if (id === "") return;
+  try {
+    const current = loadKnownProfileIds();
+    if (current.includes(id)) return;
+    window.localStorage.setItem(storageKeys.knownProfiles, JSON.stringify([...current, id]));
+  } catch {
+    // If this fails, the user can still create a new profile.
+  }
+}
+
+export function removeKnownProfileId(profileId: string): void {
+  if (!isBrowser()) return;
+  const id = safeId(profileId);
+  if (id === "") return;
+  try {
+    const next = loadKnownProfileIds().filter((entry) => entry !== id);
+    window.localStorage.setItem(storageKeys.knownProfiles, JSON.stringify(next));
+  } catch {
+    // Harmless if the list cannot be updated.
   }
 }
 

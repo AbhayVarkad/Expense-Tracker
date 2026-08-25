@@ -1,0 +1,30 @@
+﻿# Dependencies and build output (large, rarely needed for AI context)
+node_modules/
+.next/
+out/
+build/
+dist/
+.turbo/
+
+# Generated code
+src/generated/
+
+# Test coverage
+coverage/
+
+# Logs and caches
+*.log
+*.tsbuildinfo
+.eslintcache
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Git internals
+.git/
+
+# IDE
+.antigravity-ide/
+.cursor/
