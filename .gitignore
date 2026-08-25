@@ -56,6 +56,7 @@ next-env.d.ts
 # IDE / editor
 .antigravity-ide/
 .cursor/
+.cursorignore
 .idea/
 .vscode/*
 !.vscode/extensions.json
